@@ -422,8 +422,8 @@ void process_instruction(){
 */
 short fetch_instruction(void){
   short instruction = 0;
-  short least_byte = MEMORY[CURRENT_LATCHES.PC][0];
-  short most_byte = MEMORY[CURRENT_LATCHES.PC][1];
+  short least_byte = MEMORY[CURRENT_LATCHES.PC >> 1][0];
+  short most_byte = MEMORY[CURRENT_LATCHES.PC >> 1][1];
   instruction |= least_byte;
   most_byte = most_byte << 8;
   instruction |= most_byte;
