@@ -400,8 +400,89 @@ int main(int argc, char *argv[]) {
 
 /***************************************************************/
 
+typedef struct{
+	char register_name[3];
+	__int16_t machine_code;
+} destination_register;
+
+typedef struct{
+	char register_name[3];
+	__int16_t machine_code;
+} source_register1;
+
+typedef struct{
+	char register_name[3];
+	__int16_t machine_code;
+} source_register2;
+
+typedef struct{
+	char register_name[3];
+	__int16_t machine_code;
+} base_register;
+
+//arrays containing the pre-defined register structs
+//TODO: Is there an easier way to do this without hard coding?
+const destination_register arr_destination_register[] = {
+	{"r0",0b0000000000000000},{"r1",0b0000001000000000},{"r2",0b0000010000000000},{"r3",0b0000011000000000},
+	{"r4",0b0000100000000000},{"r5",0b0000101000000000},{"r6",0b0000110000000000},{"r7",0b0000111000000000}
+};
+
+const source_register1 arr_source_register1[] = {	
+	{"r0",0b0000000000000000},{"r1",0b0000000001000000},{"r2",0b0000000010000000},{"r3",0b0000000011000000},
+	{"r4",0b0000000100000000},{"r5",0b0000000101000000},{"r6",0b0000000110000000},{"r7",0b0000000111000000}
+};
+
+const source_register2 arr_source_register2[] = {	
+	{"r0",0b0000000000000000},{"r1",0b0000000000000001},{"r2",0b0000000000000010},{"r3",0b0000000000000011},
+	{"r4",0b0000000000000100},{"r5",0b0000000000000101},{"r6",0b0000000000000110},{"r7",0b0000000000000111}
+};
+
+const base_register arr_base_register[] = {	
+	{"r0",0b0000000000000000},{"r1",0b0000000001000000},{"r2",0b0000000010000000},{"r3",0b0000000011000000},
+	{"r4",0b0000000100000000},{"r5",0b0000000101000000},{"r6",0b0000000110000000},{"r7",0b0000000111000000},
+};
+
+typedef struct{	
+	char opcode[6];
+	unsigned short machine_code;
+	int num_registers;
+	int base_register;
+	__int16_t num_bits_offset_immediate;
+} opcode;
+
+const opcode arr_opcode[] = {
+	{"lea",0b1110000000000000, 1, 0, 9},{"brn",0b0000100000000000, 0, 0, 9},{"brz",0b0000010000000000, 0, 0, 9},{"brp",0b0000001000000000, 0, 0, 9},{"brnz",0b0000110000000000, 0, 0, 9},
+	{"brzp",0b0000011000000000, 0, 0, 9},{"brnp",0b0000101000000000, 0, 0, 9},{"br",0b0000111000000000, 0, 0, 9},{"brnzp",0b0000111000000000, 0, 0 ,9},
+	{"add",0b0001000000000000, 3, 0, 0},{"add",0b0001000000100000, 2, 0, 5},		
+	{"and",0b0101000000000000, 3, 0, 0},{"and",0b0101000000100000, 2, 0, 5},	
+	{"jmp",0b1100000000000000, 1, 1, 0},	
+	{"jsr",0b0100100000000000, 0, 0, 11},{"jsrr",0b0100000000000000, 1, 1, 0},	
+	{"ldb",0b0010000000000000, 2, 1, 6},{"ldw",0b0110000000000000, 2, 1, 6},	
+	{"not",0b1001000000111111, 2, 0, 0},	
+	{"ret",0b1100000111000000, 0, 0, 0},	
+	{"rti",0b1000000000000000, 0, 0, 0},	
+	{"lshf",0b1101000000000000, 2, 0, 4},
+	{"rshfl",0b1101000000010000, 2, 0, 4},
+	{"rshfa",0b1101000000110000, 2, 0, 4},
+	{"stb",0b0011000000000000, 2, 1, 6},	
+	{"stw",0b0111000000000000, 2, 1, 6},
+	{"trap",0b1111000000000000, 0, 0, 8},
+	{"xor",0b1001000000000000, 3, 0, 0},
+	{"xor",0b1001000000100000, 2, 0, 5},	
+	{"nop",0b0000000000000000, 0, 0, 0},	
+	{"halt",0b1111000000100101, 0, 0, 0}
+};
+
+#define NUM_INSTRUCTIONS 31
+
 /* return 16 bit instruction in machine code */
-short fetch_instruction(void);
+__uint16_t fetch_instruction(void);
+
+/* decode instructions, return opcode index into array */
+//Do I really have to have 31 case and switch or if statements for each opcode...
+int decode_instruction(__uint16_t instruction);
+
+void execute_instruction(int opcode_index, __uint16_t instruction);
 
 void process_instruction(){
   /*  function: process_instruction
@@ -412,20 +493,57 @@ void process_instruction(){
    *       -Execute
    *       -Update NEXT_LATCHES
    */    
-  short instruction = fetch_instruction(); 
-  
+  __uint16_t instruction = fetch_instruction(); 
+  int index = decode_instruction(instruction); 
+  execute_instruction(index, instruction);
 }
 
 /* 
-  Load the LSB and the MSB from memory using the address of the PC.
+  Load the LSB and the MSB from memory using the address of the PC right shifted by 1.
+  Since memory locations in LC3-b are half-word addressable (word being 32 bits) while modern architectures are
+  32 bits, each memory location in the simulator contains TWO instructions. Therefore, we must right shift or 
+  divide the address by 2 to obtain the correct address.
   Left shift MSB by 8 bits, OR the instruction with the LSB and MSB to obtain 16 bit instruction
 */
-short fetch_instruction(void){
-  short instruction = 0;
-  short least_byte = MEMORY[CURRENT_LATCHES.PC >> 1][0];
-  short most_byte = MEMORY[CURRENT_LATCHES.PC >> 1][1];
+__uint16_t fetch_instruction(void){
+  __uint16_t instruction = 0;
+  __uint16_t least_byte = MEMORY[CURRENT_LATCHES.PC >> 1][0];
+  __uint16_t most_byte = MEMORY[CURRENT_LATCHES.PC >> 1][1];
   instruction |= least_byte;
   most_byte = most_byte << 8;
   instruction |= most_byte;
   return instruction;
+}
+
+/* 
+    Compare the opcode with the machine code embedded into the const opcode array 
+    If there is a match, return the index of the opcode within the const opcode array
+*/
+int decode_instruction(__uint16_t instruction){
+  __uint16_t opcode = instruction & 0x0000F000;
+  for(int i = 0; i < NUM_INSTRUCTIONS; i++){
+    if(opcode == arr_opcode[i].machine_code){
+      return i;
+    }
+  }
+}
+
+void execute_instruction(int opcode_index, __uint16_t instruction){
+  int num_registers = arr_opcode[opcode_index].num_registers;
+  int base_register = arr_opcode[opcode_index].base_register;
+  int num_bits_offset = arr_opcode[opcode_index].num_bits_offset_immediate;
+  switch(num_registers){
+    case 0:{
+      break;
+    }
+    case 1:{
+      break;
+    }
+    case 2:{
+      break;
+    }
+    case 3:{
+      break;
+    }
+  }
 }
