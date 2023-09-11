@@ -451,13 +451,24 @@ typedef struct{
 } opcode;
 
 const opcode arr_opcode[] = {
-	{"lea",0b1110000000000000, 1, 0, 9},{"brn",0b0000100000000000, 0, 0, 9},{"brz",0b0000010000000000, 0, 0, 9},{"brp",0b0000001000000000, 0, 0, 9},{"brnz",0b0000110000000000, 0, 0, 9},
-	{"brzp",0b0000011000000000, 0, 0, 9},{"brnp",0b0000101000000000, 0, 0, 9},{"br",0b0000111000000000, 0, 0, 9},{"brnzp",0b0000111000000000, 0, 0 ,9},
-	{"add",0b0001000000000000, 3, 0, 0},{"add",0b0001000000100000, 2, 0, 5},		
-	{"and",0b0101000000000000, 3, 0, 0},{"and",0b0101000000100000, 2, 0, 5},	
+	{"lea",0b1110000000000000, 1, 0, 9},
+  {"brn",0b0000100000000000, 0, 0, 9},
+  {"brz",0b0000010000000000, 0, 0, 9},
+  {"brp",0b0000001000000000, 0, 0, 9},
+  {"brnz",0b0000110000000000, 0, 0, 9},
+	{"brzp",0b0000011000000000, 0, 0, 9},
+  {"brnp",0b0000101000000000, 0, 0, 9},
+  {"br",0b0000111000000000, 0, 0, 9},
+  {"brnzp",0b0000111000000000, 0, 0 ,9},
+	{"add",0b0001000000000000, 3, 0, 0},
+  {"add",0b0001000000100000, 2, 0, 5},		
+	{"and",0b0101000000000000, 3, 0, 0},
+  {"and",0b0101000000100000, 2, 0, 5},	
 	{"jmp",0b1100000000000000, 1, 1, 0},	
-	{"jsr",0b0100100000000000, 0, 0, 11},{"jsrr",0b0100000000000000, 1, 1, 0},	
-	{"ldb",0b0010000000000000, 2, 1, 6},{"ldw",0b0110000000000000, 2, 1, 6},	
+	{"jsr",0b0100100000000000, 0, 0, 11},
+  {"jsrr",0b0100000000000000, 1, 1, 0},	
+	{"ldb",0b0010000000000000, 2, 1, 6},
+  {"ldw",0b0110000000000000, 2, 1, 6},	
 	{"not",0b1001000000111111, 2, 0, 0},	
 	{"ret",0b1100000111000000, 0, 0, 0},	
 	{"rti",0b1000000000000000, 0, 0, 0},	
@@ -519,22 +530,79 @@ __uint16_t fetch_instruction(void){
     Compare the opcode with the machine code embedded into the const opcode array 
     If there is a match, return the index of the opcode within the const opcode array
 */
+//Im so sorry to anyone who has to see this code
 int decode_instruction(__uint16_t instruction){
-  __uint16_t opcode = instruction & 0x0000F000;
+  __uint16_t opcode = instruction & 0xF000; 
+  if(opcode == 0x0000){
+    opcode = instruction & 0xFE00;
+  }else{
+    opcode = instruction & 0xF000;
+  }
+  int index = 0;
   for(int i = 0; i < NUM_INSTRUCTIONS; i++){
     if(opcode == arr_opcode[i].machine_code){
-      return i;
+      //ADD
+      if(opcode == 0x1000 && (instruction & 0xF020) == 0x1000){
+        index = i;
+      }else if(opcode == 0x1000 && (instruction & 0xF020) == 0x1020){
+        i++;
+        index = i;
+      }
+      //JSR, JSRR
+      if(opcode == 0x4000 && (instruction & 0xF800) == 0x4800){
+        index = i;
+      }
+      else if(opcode == 0x4000 && (instruction & 0xF800) == 0x4000){
+        index = i;
+      }
+      if(opcode == 0x5000 && (instruction & 0xF020) == 0x5020){
+        i++;
+        index = i;
+      }else if(opcode == 0x5000 && (instruction & 0xF020) == 0x5000){
+        index = i;
+      }
+      //RET
+      if(opcode == 0xC000 && (instruction & 0xF1C0) == 0xC1C0 && arr_opcode[i].machine_code == 0xC1C0){
+        index = i;
+      }
+      else if(opcode == 0xC000 && (instruction & 0xF1C0) < 0xC1C0 && arr_opcode[i].machine_code < 0xC1C0){
+        index = i;
+      }
+      //xor
+      if(opcode == 0x9000 && (instruction & 0xF020) == 0x9000){
+        index = i;
+      }else if(opcode == 0x9000 && (instruction & 0xF020) == 0x9020){
+        i++;
+        index = i;
+      }
+      // shift instructions
+      if(opcode == 0xD000 && (instruction & 0xF030) == 0xD000){
+        index = i;
+      }else if(opcode == 0xD000 && (instruction & 0xF030) == 0xD010){
+        i++;
+        index = i;
+      }
+      else if(opcode == 0xD000 && (instruction & 0xF030) == 0xD030){
+        i += 2;
+        index = i;
+      }
+      index = i;
     }
   }
+  return index;
 }
 
 void execute_instruction(int opcode_index, __uint16_t instruction){
   int num_registers = arr_opcode[opcode_index].num_registers;
   int base_register = arr_opcode[opcode_index].base_register;
   int num_bits_offset = arr_opcode[opcode_index].num_bits_offset_immediate;
+  printf("opcode: %s\n", arr_opcode[opcode_index].opcode);
+  printf("num registers: %d\n", num_registers);
   switch(num_registers){
     case 0:{
-      break;
+      if(num_bits_offset == 0){
+
+      }
     }
     case 1:{
       break;
