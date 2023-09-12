@@ -451,50 +451,57 @@ typedef struct{
 } opcode;
 
 const opcode arr_opcode[] = {
-	{"lea",0b1110000000000000, 1, 0, 9},
-  {"brn",0b0000100000000000, 0, 0, 9},
-  {"brz",0b0000010000000000, 0, 0, 9},
-  {"brp",0b0000001000000000, 0, 0, 9},
-  {"brnz",0b0000110000000000, 0, 0, 9},
-	{"brzp",0b0000011000000000, 0, 0, 9},
-  {"brnp",0b0000101000000000, 0, 0, 9},
-  {"br",0b0000111000000000, 0, 0, 9},
-  {"brnzp",0b0000111000000000, 0, 0 ,9},
-	{"add",0b0001000000000000, 3, 0, 0},
-  {"add",0b0001000000100000, 2, 0, 5},		
-	{"and",0b0101000000000000, 3, 0, 0},
-  {"and",0b0101000000100000, 2, 0, 5},	
-	{"jmp",0b1100000000000000, 1, 1, 0},	
-	{"jsr",0b0100100000000000, 0, 0, 11},
-  {"jsrr",0b0100000000000000, 1, 1, 0},	
-	{"ldb",0b0010000000000000, 2, 1, 6},
-  {"ldw",0b0110000000000000, 2, 1, 6},	
-	{"not",0b1001000000111111, 2, 0, 0},	
-	{"ret",0b1100000111000000, 0, 0, 0},	
-	{"rti",0b1000000000000000, 0, 0, 0},	
-	{"lshf",0b1101000000000000, 2, 0, 4},
-	{"rshfl",0b1101000000010000, 2, 0, 4},
-	{"rshfa",0b1101000000110000, 2, 0, 4},
-	{"stb",0b0011000000000000, 2, 1, 6},	
-	{"stw",0b0111000000000000, 2, 1, 6},
-	{"trap",0b1111000000000000, 0, 0, 8},
-	{"xor",0b1001000000000000, 3, 0, 0},
-	{"xor",0b1001000000100000, 2, 0, 5},	
-	{"nop",0b0000000000000000, 0, 0, 0},	
-	{"halt",0b1111000000100101, 0, 0, 0}
+	{"lea",0b1110000000000000, 1, FALSE, 9},
+  {"brn",0b0000100000000000, 0, FALSE, 9},
+  {"brz",0b0000010000000000, 0, FALSE, 9},
+  {"brp",0b0000001000000000, 0, FALSE, 9},
+  {"brnz",0b0000110000000000, 0, FALSE, 9},
+	{"brzp",0b0000011000000000, 0, FALSE, 9},
+  {"brnp",0b0000101000000000, 0, FALSE, 9},
+  {"br",0b0000111000000000, 0, FALSE, 9},
+  {"brnzp",0b0000111000000000, 0, FALSE, 9},
+	{"add",0b0001000000000000, 3, FALSE, 0},
+  {"add",0b0001000000100000, 2, FALSE, 5},		
+	{"and",0b0101000000000000, 3, FALSE, 0},
+  {"and",0b0101000000100000, 2, FALSE, 5},	
+	{"jmp",0b1100000000000000, 1, TRUE, 0},	
+	{"jsr",0b0100100000000000, 0, FALSE, 11},
+  {"jsrr",0b0100000000000000, 1, TRUE, 0},	
+	{"ldb",0b0010000000000000, 2, TRUE, 6},
+  {"ldw",0b0110000000000000, 2, TRUE, 6},	
+	{"not",0b1001000000111111, 2, FALSE, 0},	
+	{"ret",0b1100000111000000, 0, TRUE, 0},	
+	{"rti",0b1000000000000000, 0, FALSE, 0},	
+	{"lshf",0b1101000000000000, 2, FALSE, 4},
+	{"rshfl",0b1101000000010000, 2, FALSE, 4},
+	{"rshfa",0b1101000000110000, 2, FALSE, 4},
+	{"stb",0b0011000000000000, 2, TRUE, 6},	
+	{"stw",0b0111000000000000, 2, TRUE, 6},
+	{"trap",0b1111000000000000, 0, FALSE, 8},
+	{"xor",0b1001000000000000, 3, FALSE, 0},
+	{"xor",0b1001000000100000, 2, FALSE, 5},	
+	{"nop",0b0000000000000000, 0, FALSE, 0},	
+	{"halt",0b1111000000100101, 0, FALSE, 0}
 };
 
 #define NUM_INSTRUCTIONS 31
 
 /* return 16 bit instruction in machine code */
 __uint16_t fetch_instruction(void);
-
+/* 
+* Function declarations
+*/
 /* decode instructions, return opcode index into array */
 //Do I really have to have 31 case and switch or if statements for each opcode...
 int decode_instruction(__uint16_t instruction);
-
 void execute_instruction(int opcode_index, __uint16_t instruction);
+int type_base_register(__uint16_t instruction);
+int type_destination_register(__uint16_t instruction);
+int type_source1_register(__uint16_t instruction);
+int type_source2_register(__uint16_t instruction);
+short value_immediate(__uint16_t instruction, int num_bits);
 
+/* Function definitions */
 void process_instruction(){
   /*  function: process_instruction
    *  
@@ -596,8 +603,7 @@ void execute_instruction(int opcode_index, __uint16_t instruction){
   int num_registers = arr_opcode[opcode_index].num_registers;
   int base_register = arr_opcode[opcode_index].base_register;
   int num_bits_offset = arr_opcode[opcode_index].num_bits_offset_immediate;
-  printf("opcode: %s\n", arr_opcode[opcode_index].opcode);
-  printf("num registers: %d\n", num_registers);
+  const char *opcode = arr_opcode[opcode_index].opcode;
   switch(num_registers){
     case 0:{
       if(num_bits_offset == 0){
@@ -608,10 +614,99 @@ void execute_instruction(int opcode_index, __uint16_t instruction){
       break;
     }
     case 2:{
+      int base_source_reg_index = type_base_register(instruction);
+      int dest_reg_index = type_destination_register(instruction);
+      unsigned short dest_reg = CURRENT_LATCHES.REGS[dest_reg_index];
+      unsigned short base_source_reg = CURRENT_LATCHES.REGS[base_source_reg_index];
+       
+      if(strcmp(opcode,"add")==0){
+        dest_reg = Low16bits(dest_reg);
+        base_source_reg = Low16bits(base_source_reg);
+        __int16_t value = value_immediate(instruction, num_bits_offset); 
+        dest_reg = Low16bits(value + base_source_reg);
+        if(dest_reg == 0){
+          NEXT_LATCHES.Z = 1;
+        }
+        else if(dest_reg < 0){
+          NEXT_LATCHES.N = 1;
+        }
+        else{
+          NEXT_LATCHES.P = 1;
+        }
+        NEXT_LATCHES.REGS[dest_reg_index] = dest_reg;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      } 
       break;
     }
     case 3:{
       break;
     }
   }
+}
+
+int type_base_register(__uint16_t instruction){
+  unsigned short bit_mask = 0x0E00;
+  for(int i = 0; i < NUM_INSTRUCTIONS; i++){
+    if(instruction & bit_mask == arr_base_register[i].machine_code){
+      return i;
+    }
+  }
+}
+
+int type_destination_register(__uint16_t instruction){
+  unsigned short bit_mask = 0x0E00;
+  for(int i = 0; i < NUM_INSTRUCTIONS; i++){
+    if(instruction & bit_mask == arr_destination_register[i].machine_code){
+      return i;
+    }
+  }
+}
+
+int type_source1_register(__uint16_t instruction){
+  unsigned short bit_mask = 0x01C0;
+  for(int i = 0; i < NUM_INSTRUCTIONS; i++){
+    if(instruction & bit_mask == arr_source_register1[i].machine_code){
+      return i;
+    }
+  }
+}
+
+int type_source2_register(__uint16_t instruction){
+  unsigned short bit_mask = 0x0007;
+  for(int i = 0; i < NUM_INSTRUCTIONS; i++){
+    if(instruction & bit_mask == arr_source_register2[i].machine_code){
+      return i;
+    }
+  }
+}
+short value_immediate(__uint16_t instruction, int num_bits){
+  __int16_t immediate_value = instruction;
+  __uint16_t bit_mask = 0x8000;
+  for(int i = 0; i < 16 - num_bits; i++){
+    bit_mask = bit_mask >> 1;
+  }
+  immediate_value = immediate_value & bit_mask;
+  for(int i = 0; i < num_bits - 1; i++){
+    immediate_value = immediate_value >> 1; 
+  }
+  if(immediate_value == 1){
+    //sign extend
+    immediate_value = instruction; 
+    bit_mask = 0x8000;
+    for(int i = 0; i < 16 - num_bits; i++){
+      immediate_value = immediate_value | bit_mask;
+      bit_mask = bit_mask >> 1;
+    }
+  }
+  else{
+    //zero extend
+    immediate_value = instruction;
+    bit_mask = 0x7FFF;
+    for(int i = 0; i < 16 - num_bits; i++){
+      immediate_value = immediate_value & bit_mask;
+      bit_mask = bit_mask >> 1;
+    }
+  }
+
+  return immediate_value;
 }

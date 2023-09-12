@@ -1,4 +1,4 @@
 .orig x3000
-xor r0 r0 r0
+add r0, r0, #-2
 done halt
 .end
