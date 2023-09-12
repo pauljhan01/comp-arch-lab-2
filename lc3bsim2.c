@@ -607,10 +607,29 @@ void execute_instruction(int opcode_index, __uint16_t instruction){
   switch(num_registers){
     case 0:{
       if(num_bits_offset == 0){
-
+        if(strcmp(opcode,"nop")==0){
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC+2;
+          break;
+        }
+        if(strcmp(opcode,"ret")==0){
+          NEXT_LATCHES.PC = CURRENT_LATCHES.REGS[7];
+          break;
+        }
+        if(strcmp(opcode,"rti")==0){
+          NEXT_LATCHES.PC = MEMORY[CURRENT_LATCHES.REGS[6]>>1];
+          CURRENT_LATCHES.REGS[6] += 2;
+          int temp = MEMORY[CURRENT_LATCHES.REGS[6]>>1];
+          CURRENT_LATCHES.REGS[6] += 2;
+          temp = Low16bits(temp);
+          CURRENT_LATCHES.N = (temp & 0x0004) >> 2;
+          CURRENT_LATCHES.Z = (temp & 0x0002) >> 1;
+          CURRENT_LATCHES.P = (temp & 0x0001);
+          break;
+        }
       }
     }
     case 1:{
+      
       break;
     }
     case 2:{
