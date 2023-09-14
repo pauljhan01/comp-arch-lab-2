@@ -402,22 +402,22 @@ int main(int argc, char *argv[]) {
 
 typedef struct{
 	char register_name[3];
-	__int16_t machine_code;
+	__uint16_t machine_code;
 } destination_register;
 
 typedef struct{
 	char register_name[3];
-	__int16_t machine_code;
+	__uint16_t machine_code;
 } source_register1;
 
 typedef struct{
 	char register_name[3];
-	__int16_t machine_code;
+	__uint16_t machine_code;
 } source_register2;
 
 typedef struct{
 	char register_name[3];
-	__int16_t machine_code;
+	__uint16_t machine_code;
 } base_register;
 
 //arrays containing the pre-defined register structs
@@ -458,6 +458,7 @@ const opcode arr_opcode[] = {
   {"brnz",0b0000110000000000, 0, FALSE, 9},
 	{"brzp",0b0000011000000000, 0, FALSE, 9},
   {"brnp",0b0000101000000000, 0, FALSE, 9},
+  {"br",0b0000000000000000, 0, FALSE, 9},
   {"br",0b0000111000000000, 0, FALSE, 9},
   {"brnzp",0b0000111000000000, 0, FALSE, 9},
 	{"add",0b0001000000000000, 3, FALSE, 0},
@@ -469,8 +470,6 @@ const opcode arr_opcode[] = {
   {"jsrr",0b0100000000000000, 1, TRUE, 0},	
 	{"ldb",0b0010000000000000, 2, TRUE, 6},
   {"ldw",0b0110000000000000, 2, TRUE, 6},	
-	{"not",0b1001000000111111, 2, FALSE, 0},	
-	{"ret",0b1100000111000000, 0, TRUE, 0},	
 	{"rti",0b1000000000000000, 0, FALSE, 0},	
 	{"lshf",0b1101000000000000, 2, FALSE, 4},
 	{"rshfl",0b1101000000010000, 2, FALSE, 4},
@@ -480,11 +479,9 @@ const opcode arr_opcode[] = {
 	{"trap",0b1111000000000000, 0, FALSE, 8},
 	{"xor",0b1001000000000000, 3, FALSE, 0},
 	{"xor",0b1001000000100000, 2, FALSE, 5},	
-	{"nop",0b0000000000000000, 0, FALSE, 0},	
-	{"halt",0b1111000000100101, 0, FALSE, 0}
 };
 
-#define NUM_INSTRUCTIONS 31
+#define NUM_INSTRUCTIONS 28
 
 /* return 16 bit instruction in machine code */
 __uint16_t fetch_instruction(void);
@@ -500,6 +497,8 @@ int type_destination_register(__uint16_t instruction);
 int type_source1_register(__uint16_t instruction);
 int type_source2_register(__uint16_t instruction);
 short value_immediate(__uint16_t instruction, int num_bits);
+void set_cc(__uint16_t value);
+__int16_t sign_extend(__int16_t value);
 
 /* Function definitions */
 void process_instruction(){
@@ -542,7 +541,10 @@ int decode_instruction(__uint16_t instruction){
   __uint16_t opcode = instruction & 0xF000; 
   if(opcode == 0x0000){
     opcode = instruction & 0xFE00;
-  }else{
+  }else if(opcode == 0x4000){
+    opcode = instruction & 0xF800;
+  }
+  else{
     opcode = instruction & 0xF000;
   }
   int index = 0;
@@ -558,6 +560,7 @@ int decode_instruction(__uint16_t instruction){
       //JSR, JSRR
       if(opcode == 0x4000 && (instruction & 0xF800) == 0x4800){
         index = i;
+        break;
       }
       else if(opcode == 0x4000 && (instruction & 0xF800) == 0x4000){
         index = i;
@@ -607,66 +610,268 @@ void execute_instruction(int opcode_index, __uint16_t instruction){
   switch(num_registers){
     case 0:{
       if(num_bits_offset == 0){
-        if(strcmp(opcode,"nop")==0){
-          NEXT_LATCHES.PC = CURRENT_LATCHES.PC+2;
-          break;
-        }
         if(strcmp(opcode,"ret")==0){
           NEXT_LATCHES.PC = CURRENT_LATCHES.REGS[7];
           break;
         }
-        if(strcmp(opcode,"rti")==0){
-          NEXT_LATCHES.PC = MEMORY[CURRENT_LATCHES.REGS[6]>>1];
-          CURRENT_LATCHES.REGS[6] += 2;
-          int temp = MEMORY[CURRENT_LATCHES.REGS[6]>>1];
-          CURRENT_LATCHES.REGS[6] += 2;
-          temp = Low16bits(temp);
-          CURRENT_LATCHES.N = (temp & 0x0004) >> 2;
-          CURRENT_LATCHES.Z = (temp & 0x0002) >> 1;
-          CURRENT_LATCHES.P = (temp & 0x0001);
-          break;
+      }
+      if(strcmp(opcode,"trap")==0){
+        __uint16_t trap_vector = instruction & 0x00FF;
+        NEXT_LATCHES.REGS[7] = CURRENT_LATCHES.PC + 2;
+        trap_vector = trap_vector << 1;
+        NEXT_LATCHES.PC = MEMORY[trap_vector][0];
+      }
+      if(strcmp(opcode,"jsr")==0){
+        int value = value_immediate(instruction, num_bits_offset);
+        value = value << 1;
+        NEXT_LATCHES.REGS[7] = CURRENT_LATCHES.PC + 2;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2 + value;
+      }
+      if(strcmp(opcode,"br")==0 || strcmp(opcode,"brnzp")==0){
+        int value = value_immediate(instruction, num_bits_offset);
+        value = value << 1;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2 + value;
+      }
+      if(strcmp(opcode,"brn")==0){
+        if(CURRENT_LATCHES.N == 1){
+          int value = value_immediate(instruction, num_bits_offset);
+          value = value << 1;
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2 + value;
+        }else{
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
         }
       }
+      if(strcmp(opcode,"brz")==0){ 
+        if(CURRENT_LATCHES.Z == 1){
+          int value = value_immediate(instruction, num_bits_offset);
+          value = value << 1;
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2 + value;
+        }else{
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+        }
+      }
+      if(strcmp(opcode,"brp")==0){ 
+        if(CURRENT_LATCHES.P == 1){
+          int value = value_immediate(instruction, num_bits_offset);
+          value = value << 1;
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2 + value;
+        }else{
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+        }
+      } 
+      if(strcmp(opcode,"brnz")==0){ 
+        if(CURRENT_LATCHES.N == 1 || CURRENT_LATCHES.Z == 1){
+          int value = value_immediate(instruction, num_bits_offset);
+          value = value << 1;
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2 + value;
+        }else{
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+        }
+      }
+      if(strcmp(opcode,"brzp")==0){ 
+        if(CURRENT_LATCHES.Z == 1 || CURRENT_LATCHES.P == 1){
+          int value = value_immediate(instruction, num_bits_offset);
+          value = value << 1;
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2 + value;
+        }else{
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+        }
+      }
+      if(strcmp(opcode,"brnp")==0){ 
+        if(CURRENT_LATCHES.N == 1 || CURRENT_LATCHES.P == 1){
+          int value = value_immediate(instruction, num_bits_offset);
+          value = value << 1;
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2 + value;
+        }else{
+          NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+        }
+      }
+      break;
     }
     case 1:{
+      int dest_reg_index = type_destination_register(instruction);
+      int base_source_index = type_base_register(instruction);
+      __int16_t value = value_immediate(instruction, num_bits_offset);
       
+      if(strcmp(opcode,"lea")==0){
+        value = value << 1;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+        NEXT_LATCHES.REGS[dest_reg_index] = NEXT_LATCHES.PC + value;
+      }
+      if(strcmp(opcode,"jmp")==0){
+        NEXT_LATCHES.PC = CURRENT_LATCHES.REGS[base_source_index];
+      }
+      if(strcmp(opcode,"jsrr")==0){
+        NEXT_LATCHES.REGS[7] = CURRENT_LATCHES.PC + 2;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.REGS[base_source_index] & 0x0000FFFF;
+      }
       break;
     }
     case 2:{
       int base_source_reg_index = type_base_register(instruction);
       int dest_reg_index = type_destination_register(instruction);
-      unsigned short dest_reg = CURRENT_LATCHES.REGS[dest_reg_index];
-      unsigned short base_source_reg = CURRENT_LATCHES.REGS[base_source_reg_index];
+      __uint16_t dest_reg = CURRENT_LATCHES.REGS[dest_reg_index];
+      __uint16_t base_source_reg = CURRENT_LATCHES.REGS[base_source_reg_index];
        
       if(strcmp(opcode,"add")==0){
         dest_reg = Low16bits(dest_reg);
         base_source_reg = Low16bits(base_source_reg);
         __int16_t value = value_immediate(instruction, num_bits_offset); 
         dest_reg = Low16bits(value + base_source_reg);
-        if(dest_reg == 0){
-          NEXT_LATCHES.Z = 1;
-        }
-        else if(dest_reg < 0){
-          NEXT_LATCHES.N = 1;
-        }
-        else{
-          NEXT_LATCHES.P = 1;
-        }
+        set_cc(dest_reg);
         NEXT_LATCHES.REGS[dest_reg_index] = dest_reg;
         NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
       } 
+      if(strcmp(opcode,"and")==0){
+        dest_reg = Low16bits(dest_reg); 
+        base_source_reg = Low16bits(base_source_reg);
+        __int16_t value = value_immediate(instruction, num_bits_offset); 
+        dest_reg = Low16bits(base_source_reg & value);
+        set_cc(dest_reg);
+        NEXT_LATCHES.REGS[dest_reg_index] = dest_reg;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode, "xor")==0){ 
+        dest_reg = Low16bits(dest_reg); 
+        base_source_reg = Low16bits(base_source_reg);
+        __int16_t value = value_immediate(instruction, num_bits_offset); 
+        dest_reg = Low16bits(base_source_reg ^ value);
+        set_cc(dest_reg);
+        NEXT_LATCHES.REGS[dest_reg_index] = dest_reg;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode,"lshf")==0){
+        dest_reg = Low16bits(dest_reg);
+        base_source_reg = Low16bits(base_source_reg);
+        __uint16_t value = value_immediate(instruction, num_bits_offset);
+        dest_reg = Low16bits(base_source_reg << value);
+        set_cc(dest_reg);
+        NEXT_LATCHES.REGS[dest_reg_index] = dest_reg;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode,"rshfl")==0){ 
+        dest_reg = Low16bits(dest_reg);
+        base_source_reg = Low16bits(base_source_reg);
+        __uint16_t value = value_immediate(instruction, num_bits_offset);
+        dest_reg = Low16bits(base_source_reg >> value);
+        set_cc(dest_reg);
+        NEXT_LATCHES.REGS[dest_reg_index] = dest_reg;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode,"rshfa")==0){
+        __int16_t dest_reg = CURRENT_LATCHES.REGS[dest_reg_index];
+        __int16_t base_source_reg = CURRENT_LATCHES.REGS[base_source_reg_index];
+        __uint16_t value = value_immediate(instruction, num_bits_offset);
+        dest_reg = Low16bits(base_source_reg >> value);
+        set_cc(dest_reg);
+        NEXT_LATCHES.REGS[dest_reg_index] = dest_reg;
+        NEXT_LATCHES.REGS[dest_reg_index] &= 0x0000FFFF; 
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode,"ldw")==0){
+        __int16_t value = value_immediate(instruction, num_bits_offset);
+        value = value << 1;
+        __uint16_t base_source_reg = CURRENT_LATCHES.REGS[base_source_reg_index];
+        NEXT_LATCHES.REGS[dest_reg_index] = 0x0000;
+        //0x00FF
+        NEXT_LATCHES.REGS[dest_reg_index] = MEMORY[(base_source_reg + value) >> 1][0]; 
+        __int16_t temp = MEMORY[(base_source_reg + value) >> 1][1];
+        temp = temp << 8;
+        temp = temp & 0xFF00;
+        //0xFF00
+        //MS byte
+        NEXT_LATCHES.REGS[dest_reg_index] = NEXT_LATCHES.REGS[dest_reg_index] | temp;
+        NEXT_LATCHES.REGS[dest_reg_index] &= 0x0000FFFF; 
+        set_cc(NEXT_LATCHES.REGS[dest_reg_index]);
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode,"ldb")==0){
+        __int16_t value = value_immediate(instruction, num_bits_offset);
+        __uint16_t address = base_source_reg + value;
+        if(address % 2 == 0){
+          __int16_t temp = MEMORY[address >> 1][0];
+          temp = sign_extend(temp); 
+          NEXT_LATCHES.REGS[dest_reg_index] = temp; 
+          NEXT_LATCHES.REGS[dest_reg_index] &= 0x0000FFFF; 
+        }
+        else{
+          address--;
+          __int16_t temp = MEMORY[address >> 1][1];
+          temp = sign_extend(temp); 
+          NEXT_LATCHES.REGS[dest_reg_index] = temp;
+          NEXT_LATCHES.REGS[dest_reg_index] &= 0x0000FFFF; 
+        }
+        set_cc(NEXT_LATCHES.REGS[dest_reg_index]); 
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode,"stw")==0){
+        __int16_t value = value_immediate(instruction, num_bits_offset);
+        value = value << 1;
+        __uint16_t address = base_source_reg + value;
+        MEMORY[address >> 1][0] = dest_reg & 0x000000FF;
+        MEMORY[address >> 1][1] = (dest_reg & 0x0000FF00) >> 8;
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode,"stb")==0){
+        __int16_t value = value_immediate(instruction, num_bits_offset);
+        __uint16_t address = base_source_reg + value;
+        if(address % 2 == 0){
+          MEMORY[address >> 1][0] = dest_reg & 0x000000FF;
+        }else{
+          address--;
+          MEMORY[address >> 1][1] = dest_reg & 0x000000FF;
+        }
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
       break;
     }
     case 3:{
+      if(strcmp(opcode,"add")==0){
+        __uint16_t source_register1_index = type_source1_register(instruction);
+        __uint16_t source_register2_index = type_source2_register(instruction);
+        __uint16_t destination_register_index = type_destination_register(instruction);
+        __int16_t source2 = CURRENT_LATCHES.REGS[source_register2_index] & 0x0000FFFF;
+        __int16_t source1 = CURRENT_LATCHES.REGS[source_register1_index] & 0x0000FFFF;
+        __int16_t result = source1 + source2;
+        NEXT_LATCHES.REGS[destination_register_index] = result;
+        NEXT_LATCHES.REGS[destination_register_index] &= 0x0000FFFF;
+        set_cc(result);
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode,"xor")==0){ 
+        __uint16_t source_register1_index = type_source1_register(instruction);
+        __uint16_t source_register2_index = type_source2_register(instruction);
+        __uint16_t destination_register_index = type_destination_register(instruction);
+        __int16_t source2 = CURRENT_LATCHES.REGS[source_register2_index] & 0x0000FFFF;
+        __int16_t source1 = CURRENT_LATCHES.REGS[source_register1_index] & 0x0000FFFF;
+        __int16_t result = source1 ^ source2;
+        NEXT_LATCHES.REGS[destination_register_index] = result;
+        NEXT_LATCHES.REGS[destination_register_index] &= 0x0000FFFF;
+        set_cc(result);
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
+      if(strcmp(opcode,"and")==0){ 
+        __uint16_t source_register1_index = type_source1_register(instruction);
+        __uint16_t source_register2_index = type_source2_register(instruction);
+        __uint16_t destination_register_index = type_destination_register(instruction);
+        __int16_t source2 = CURRENT_LATCHES.REGS[source_register2_index] & 0x0000FFFF;
+        __int16_t source1 = CURRENT_LATCHES.REGS[source_register1_index] & 0x0000FFFF;
+        __int16_t result = source1 & source2;
+        NEXT_LATCHES.REGS[destination_register_index] = result;
+        NEXT_LATCHES.REGS[destination_register_index] &= 0x0000FFFF;
+        set_cc(result);
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+      }
       break;
     }
   }
 }
 
 int type_base_register(__uint16_t instruction){
-  unsigned short bit_mask = 0x0E00;
+  unsigned short bit_mask = 0x01C0;
+  instruction = instruction & bit_mask;
   for(int i = 0; i < NUM_INSTRUCTIONS; i++){
-    if(instruction & bit_mask == arr_base_register[i].machine_code){
+    if(instruction == arr_base_register[i].machine_code){
       return i;
     }
   }
@@ -674,8 +879,9 @@ int type_base_register(__uint16_t instruction){
 
 int type_destination_register(__uint16_t instruction){
   unsigned short bit_mask = 0x0E00;
+  instruction = instruction & bit_mask;
   for(int i = 0; i < NUM_INSTRUCTIONS; i++){
-    if(instruction & bit_mask == arr_destination_register[i].machine_code){
+    if(instruction == arr_destination_register[i].machine_code){
       return i;
     }
   }
@@ -683,8 +889,9 @@ int type_destination_register(__uint16_t instruction){
 
 int type_source1_register(__uint16_t instruction){
   unsigned short bit_mask = 0x01C0;
+  instruction = instruction & bit_mask;
   for(int i = 0; i < NUM_INSTRUCTIONS; i++){
-    if(instruction & bit_mask == arr_source_register1[i].machine_code){
+    if(instruction == arr_source_register1[i].machine_code){
       return i;
     }
   }
@@ -692,8 +899,9 @@ int type_source1_register(__uint16_t instruction){
 
 int type_source2_register(__uint16_t instruction){
   unsigned short bit_mask = 0x0007;
+  instruction = instruction & bit_mask;
   for(int i = 0; i < NUM_INSTRUCTIONS; i++){
-    if(instruction & bit_mask == arr_source_register2[i].machine_code){
+    if(instruction == arr_source_register2[i].machine_code){
       return i;
     }
   }
@@ -728,4 +936,36 @@ short value_immediate(__uint16_t instruction, int num_bits){
   }
 
   return immediate_value;
+}
+
+void set_cc(__uint16_t value){
+  __uint16_t bit_mask = 0x00008000;
+  if(value == 0){
+    NEXT_LATCHES.N = 0;
+    NEXT_LATCHES.Z = 1;
+    NEXT_LATCHES.P = 0;
+    return;
+  }
+  value = value & bit_mask;
+  value = value >> 15;
+  if(value == 0x0001){
+    NEXT_LATCHES.N = 1;
+    NEXT_LATCHES.Z = 0;
+    NEXT_LATCHES.P = 0;
+  } 
+  else{
+    NEXT_LATCHES.N = 0;
+    NEXT_LATCHES.Z = 0;
+    NEXT_LATCHES.P = 1;
+  }
+}
+
+__int16_t sign_extend(__int16_t value){
+  __uint16_t bit_mask = 0x0080;
+  if(((value & bit_mask) >> 7) == 1){
+    value = value | 0xFF00;
+  }else{
+    value = value & 0x00FF;
+  }
+  return value;
 }
